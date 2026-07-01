@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         按键映射
 // @namespace    web-hotkey
-// @version      1.1.0
+// @version      1.1.1
 // @description  支持所有网站的按键映射，URL支持通配符
 // @author       R9
 // @match        *://*/*
@@ -343,30 +343,48 @@
     return null
   }
 
+  const KEYCODE_MAP = {
+    Backspace: 8, Tab: 9, Enter: 13, Shift: 16, Control: 17, Alt: 18,
+    Escape: 27, ' ': 32, PageUp: 33, PageDown: 34, End: 35, Home: 36,
+    ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40,
+    Insert: 45, Delete: 46
+  }
+
   function dispatchRemapped(originalEvent, targetMod) {
     const target = originalEvent.target
 
-    const modEvents = []
-    if (targetMod.ctrl) modEvents.push({ key: 'Control', code: 'ControlLeft', ctrlKey: true })
-    if (targetMod.alt) modEvents.push({ key: 'Alt', code: 'AltLeft', altKey: true })
-    if (targetMod.shift) modEvents.push({ key: 'Shift', code: 'ShiftLeft', shiftKey: true })
-    if (targetMod.meta) modEvents.push({ key: 'Meta', code: 'MetaLeft', metaKey: true })
-
-    for (const m of modEvents) {
-      target.dispatchEvent(new KeyboardEvent('keydown', {
-        key: m.key, code: m.code, ctrlKey: !!targetMod.ctrl, altKey: !!targetMod.alt,
-        shiftKey: !!targetMod.shift, metaKey: !!targetMod.meta,
+    function fire(key, code, kc) {
+      const ev = new KeyboardEvent('keydown', {
+        key, code,
+        keyCode: kc, which: kc,
+        ctrlKey: targetMod.ctrl, altKey: targetMod.alt,
+        shiftKey: targetMod.shift, metaKey: targetMod.meta,
         bubbles: true, cancelable: true
-      }))
+      })
+      const origGetMod = ev.getModifierState.bind(ev)
+      ev.getModifierState = function (m) {
+        if (m === 'Control') return !!targetMod.ctrl
+        if (m === 'Alt') return !!targetMod.alt
+        if (m === 'Shift') return !!targetMod.shift
+        if (m === 'Meta') return !!targetMod.meta
+        return origGetMod(m)
+      }
+      target.dispatchEvent(ev)
     }
 
-    target.dispatchEvent(new KeyboardEvent('keydown', {
-      key: targetMod.key,
-      code: targetMod.key.length === 1 ? 'Key' + targetMod.key.toUpperCase() : targetMod.key,
-      ctrlKey: targetMod.ctrl, altKey: targetMod.alt,
-      shiftKey: targetMod.shift, metaKey: targetMod.meta,
-      bubbles: true, cancelable: true
-    }))
+    if (targetMod.ctrl) fire('Control', 'ControlLeft', KEYCODE_MAP.Control)
+    if (targetMod.alt) fire('Alt', 'AltLeft', KEYCODE_MAP.Alt)
+    if (targetMod.shift) fire('Shift', 'ShiftLeft', KEYCODE_MAP.Shift)
+    if (targetMod.meta) fire('Meta', 'MetaLeft')
+
+    const mk = targetMod.key
+    if (mk.length === 1) {
+      fire(mk, 'Key' + mk.toUpperCase(), mk.charCodeAt(0))
+    } else {
+      const proper = mk === 'space' ? ' ' : mk.charAt(0).toUpperCase() + mk.slice(1)
+      const code = proper === ' ' ? 'Space' : proper
+      fire(proper, code, KEYCODE_MAP[proper] || 0)
+    }
   }
 
   document.addEventListener('keydown', (e) => {
