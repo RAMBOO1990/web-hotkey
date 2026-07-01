@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         按键映射
 // @namespace    web-hotkey
-// @version      1.0.0
-// @description  按键映射工具
+// @version      1.1.0
+// @description  支持所有网站的按键映射，URL支持通配符
 // @author       R9
 // @match        *://*/*
 // @grant        GM_setValue
@@ -25,6 +25,10 @@
       if (!raw) return getDefaultConfig()
       const parsed = JSON.parse(raw)
       if (parsed && typeof parsed === 'object' && Array.isArray(parsed.rules)) {
+        for (const r of parsed.rules) {
+          if (r.url == null && r.domain != null) r.url = r.domain
+          delete r.domain
+        }
         return parsed
       }
       return getDefaultConfig()
@@ -38,7 +42,7 @@
   }
 
   let currentConfig = loadConfig()
-  let editingDomain = ''
+  let editingUrl = ''
 
   function escapeHtml(str) {
     const div = document.createElement('div')
@@ -56,8 +60,20 @@
     return parts.join('+')
   }
 
-  function renderRuleList(container, rules, filterDomain) {
-    const filtered = rules.filter(r => r.domain === filterDomain)
+  function urlMatches(pattern, matchTarget) {
+    if (pattern === '*') return true
+    if (pattern === matchTarget) return true
+    try {
+      const escaped = pattern.replace(/[.+^${}()|[\]\\?]/g, '\\$&').replace(/\*/g, '.*?')
+      const regex = new RegExp('^' + escaped + '$', 'i')
+      return regex.test(matchTarget)
+    } catch {
+      return false
+    }
+  }
+
+  function renderRuleList(container, rules, filterUrl) {
+    const filtered = rules.filter(r => urlMatches(r.url, filterUrl) || urlMatches(r.url, location.href))
     if (filtered.length === 0) {
       container.innerHTML = '<div style="color:#bbb;font-size:13px;padding:20px 0;text-align:center;">暂无规则，点击下方 + 新增规则 添加</div>'
       return
@@ -66,7 +82,7 @@
       const src = serializeCombo(rule.source)
       const tgt = serializeCombo(rule.target)
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;margin-bottom:6px;background:#f8f9fa;border-radius:6px;font-size:13px;">
-        <span><strong>${src}</strong> → <strong>${tgt}</strong></span>
+        <span><span style="color:#999;font-size:11px;">${escapeHtml(rule.url)}</span> <strong>${src}</strong> → <strong>${tgt}</strong></span>
         <div>
           <button data-rule-idx="${idx}" class="whk-edit-btn" style="padding:4px 10px;border:1px solid #ddd;border-radius:4px;background:#fff;font-size:12px;cursor:pointer;margin-right:4px;">编辑</button>
           <button data-rule-idx="${idx}" class="whk-del-btn" style="padding:4px 10px;border:1px solid #ff4d4f;border-radius:4px;background:#fff;color:#ff4d4f;font-size:12px;cursor:pointer;">删除</button>
@@ -76,7 +92,7 @@
   }
 
   function getModalHTML() {
-    const domain = editingDomain || location.hostname
+    const url = editingUrl || location.href
     return `
 <div id="web-hotkey-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <div style="background:#fff;border-radius:12px;width:520px;max-width:94vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
@@ -85,8 +101,8 @@
       <span id="whk-close-btn" style="cursor:pointer;font-size:22px;color:#999;line-height:1;">&times;</span>
     </div>
     <div style="padding:16px 20px 0;">
-      <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">域名</label>
-      <input id="whk-domain-input" type="text" value="${escapeHtml(domain)}" placeholder="example.com" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
+      <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">URL</label>
+      <input id="whk-url-input" type="text" value="${escapeHtml(url)}" placeholder="https://* 或 *.example.com (支持 * 通配符)" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
     </div>
     <div style="padding:12px 20px 4px;font-size:13px;color:#666;">改键规则</div>
     <div id="whk-rule-list" style="padding:0 20px;overflow-y:auto;flex:1;min-height:100px;"></div>
@@ -106,7 +122,7 @@
 
   function openPanel() {
     currentConfig = loadConfig()
-    editingDomain = location.hostname
+    editingUrl = location.href
     document.body.insertAdjacentHTML('beforeend', getModalHTML())
     bindPanelEvents()
   }
@@ -120,14 +136,14 @@
     const overlay = document.getElementById('web-hotkey-overlay')
     if (!overlay) return
 
-    const domainInput = document.getElementById('whk-domain-input')
+    const urlInput = document.getElementById('whk-url-input')
     const ruleList = document.getElementById('whk-rule-list')
 
-    renderRuleList(ruleList, currentConfig.rules, editingDomain)
+    renderRuleList(ruleList, currentConfig.rules, editingUrl)
 
-    domainInput.addEventListener('input', () => {
-      editingDomain = domainInput.value.trim()
-      renderRuleList(ruleList, currentConfig.rules, editingDomain)
+    urlInput.addEventListener('input', () => {
+      editingUrl = urlInput.value.trim()
+      renderRuleList(ruleList, currentConfig.rules, editingUrl)
     })
 
     document.getElementById('whk-close-btn').onclick = closePanel
@@ -141,13 +157,14 @@
       const btn = e.target.closest('button')
       if (!btn) return
       const ruleIdx = parseInt(btn.dataset.ruleIdx)
-      const filtered = currentConfig.rules.filter(r => r.domain === editingDomain)
-      const globalIdx = currentConfig.rules.indexOf(filtered[ruleIdx])
+      const filtered = currentConfig.rules.filter(r => urlMatches(r.url, editingUrl) || urlMatches(r.url, location.href))
+      const target = filtered[ruleIdx]
+      const globalIdx = currentConfig.rules.indexOf(target)
       if (btn.classList.contains('whk-edit-btn')) {
         openRuleEditor(globalIdx)
       } else if (btn.classList.contains('whk-del-btn')) {
         currentConfig.rules.splice(globalIdx, 1)
-        renderRuleList(ruleList, currentConfig.rules, editingDomain)
+        renderRuleList(ruleList, currentConfig.rules, editingUrl)
       }
     })
 
@@ -192,7 +209,7 @@
     const existing = editGlobalIdx != null ? currentConfig.rules[editGlobalIdx] : null
     const srcMod = existing ? { ...existing.source } : { key: '', ctrl: false, alt: false, shift: false, meta: false }
     const tgtMod = existing ? { ...existing.target } : { key: '', ctrl: false, alt: false, shift: false, meta: false }
-    const ruleDomain = existing ? existing.domain : editingDomain
+    const ruleUrl = existing ? existing.url : editingUrl
 
     const editorHTML = `
 <div id="whk-editor-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;z-index:10;background:rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;border-radius:12px;">
@@ -282,7 +299,7 @@
 
       if (editGlobalIdx == null) {
         const conflict = currentConfig.rules.find(r =>
-          r.domain === ruleDomain &&
+          r.url === ruleUrl &&
           r.source.key === srcMod.key &&
           r.source.ctrl === srcMod.ctrl &&
           r.source.alt === srcMod.alt &&
@@ -290,12 +307,12 @@
           r.source.meta === srcMod.meta
         )
         if (conflict) {
-          alert('该按键组合在此域名下已存在规则')
+          alert('该按键组合在此 URL 下已存在规则')
           return
         }
       }
 
-      const newRule = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), domain: ruleDomain, source: { ...srcMod }, target: { ...tgtMod } }
+      const newRule = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), url: ruleUrl, source: { ...srcMod }, target: { ...tgtMod } }
       if (editGlobalIdx != null) {
         currentConfig.rules[editGlobalIdx] = newRule
       } else {
@@ -306,15 +323,15 @@
       document.removeEventListener('keydown', keyHandler)
 
       const ruleList = document.getElementById('whk-rule-list')
-      if (ruleList) renderRuleList(ruleList, currentConfig.rules, editingDomain)
+      if (ruleList) renderRuleList(ruleList, currentConfig.rules, editingUrl)
     }
   }
 
   const MODIFIER_KEYS = new Set(['control', 'alt', 'shift', 'meta'])
 
-  function matchRule(config, domain, key, ctrl, alt, shift, meta) {
+  function matchRule(config, matchUrl, key, ctrl, alt, shift, meta) {
     for (const rule of config.rules) {
-      if (rule.domain !== domain) continue
+      if (!urlMatches(rule.url, matchUrl)) continue
       const s = rule.source
       if (s.key !== key) continue
       if (!!s.ctrl !== ctrl) continue
@@ -363,9 +380,9 @@
     if (config.skipInputs !== false && ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return
 
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase()
-    const domain = location.hostname
+    const matchTarget = location.href
 
-    const rule = matchRule(config, domain, key, e.ctrlKey, e.altKey, e.shiftKey, e.metaKey)
+    const rule = matchRule(config, matchTarget, key, e.ctrlKey, e.altKey, e.shiftKey, e.metaKey)
     if (!rule) return
 
     e.preventDefault()
