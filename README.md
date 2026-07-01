@@ -1,5 +1,7 @@
 # Web Hotkey
 
+<img src="https://img.shields.io/badge/Licence-GPLv3-green">
+
 一个 Tampermonkey 用户脚本，可在任意网站上自定义键盘快捷键映射。
 
 ## 功能
@@ -13,10 +15,10 @@
 ## 安装
 
 
-1. 为你的浏览器安装 [Tampermonkey](https://www.tampermonkey.net/)
-2. 一键安装
+1. 安装 [Tampermonkey](https://www.tampermonkey.net/)
+2. 安装WebHotKey
 <a href="https://github.com/RAMBOO1990/web-hotkey/raw/main/web-hotkey.user.js">
-  <img src="https://img.shields.io/badge/Install%20from-GitHub-181717?logo=github&style=for-the-badge" alt="从 GitHub 安装" height="36">
+  <img src="https://img.shields.io/badge/安装WebHotKey-Github-black?logo=github&style=for-the-badge" height="36">
 </a>
 
 ## 使用
@@ -29,12 +31,6 @@
 
 **URL 匹配** 支持 `*` 通配符，匹配完整的 `location.href`（不仅仅是域名）。
 
-## 兼容性
-
-- Chrome、Firefox、Edge、Safari（需安装 Tampermonkey）
-- 无外部依赖
-- 单文件自包含 `.user.js` — 无需构建
-
-## 许可证
+## Licence
 
 GPLv3
